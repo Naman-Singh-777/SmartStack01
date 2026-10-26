@@ -29,3 +29,12 @@ def estimate_tokens(text: str) -> int:
 def split_sentences(text: str) -> list[str]:
     """Split on . ! ? followed by a space. Good enough for plain prose."""
     return [part.strip() for part in re.split(r"(?<=[.!?])\s+", text.strip()) if part.strip()]
+
+
+# Everyday words that appear in many documents but say nothing about the topic.
+# Without this list, "How do vaccines work?" would match any chunk containing "work".
+GENERIC_WORDS = frozenset(
+    """good bad better best work works working use used using make makes made need needs
+    example examples way many much one two three new like get gets time part often usually
+    different same simple common sometimes also even still really data percent""".split()
+)

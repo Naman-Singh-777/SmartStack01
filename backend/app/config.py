@@ -50,7 +50,7 @@ CACHE_TTL_SECONDS = 60 * 60
 
 # Retrieval: how many chunks to look at and how good a match must be to be used.
 RETRIEVAL_TOP_K = 3
-RETRIEVAL_MIN_SCORE = 0.15
+RETRIEVAL_MIN_SCORE = 0.13
 WORD_WEIGHT = 0.6  # weight of exact word matching in the hybrid score
 CHAR_WEIGHT = 0.4  # weight of fuzzy (spelling tolerant) matching
 
