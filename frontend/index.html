@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SmartStack | Spend less on AI answers</title>
+  <meta name="description" content="SmartStack sorts each question by difficulty, reuses answers, sends the model only useful documents, and shows what you saved.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f6b63'/%3E%3Crect x='6' y='17' width='5' height='9' rx='1' fill='%23fff'/%3E%3Crect x='13.5' y='11' width='5' height='15' rx='1' fill='%23fff'/%3E%3Crect x='21' y='5' width='5' height='21' rx='1' fill='%23fff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="container header-row">
+      <a class="brand" href="#/" aria-label="SmartStack home">
+        <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
+          <rect width="32" height="32" rx="7" fill="currentColor"/>
+          <rect x="6" y="17" width="5" height="9" rx="1" fill="var(--bg)"/>
+          <rect x="13.5" y="11" width="5" height="15" rx="1" fill="var(--bg)"/>
+          <rect x="21" y="5" width="5" height="21" rx="1" fill="var(--bg)"/>
+        </svg>
+        <span>SmartStack</span>
+      </a>
+      <nav class="site-nav" aria-label="Main">
+        <a href="#/" data-route="/">Overview</a>
+        <a href="#/try" data-route="/try">Try it</a>
+        <a href="#/how" data-route="/how">How it works</a>
+        <a href="#/dashboard" data-route="/dashboard">Dashboard</a>
+      </nav>
+      <p class="status" id="api-status" role="status" aria-live="polite">
+        <span class="dot" aria-hidden="true"></span><span id="api-status-text">Connecting to the API</span>
+      </p>
+    </div>
+  </header>
+
+  <main id="main" class="container" tabindex="-1">
+
+    <!-- Overview -->
+    <section data-page="/" aria-labelledby="overview-title">
+      <div class="hero">
+        <h1 id="overview-title">Use the big model only when the question needs it.</h1>
+        <p class="lead">SmartStack sorts each question by difficulty, reuses answers it already has, sends the model only the documents that matter, and shows what each answer cost compared with always using the largest model.</p>
+        <div class="button-row">
+          <a class="button primary" href="#/try">Try a question</a>
+          <a class="button" href="#/how">See how it works</a>
+        </div>
+      </div>
+
+      <h2>Three sizes of model, three price levels</h2>
+      <p class="section-intro">Easy questions go to the small model, harder ones climb the ladder. Prices below are examples per million tokens, loaded from the API.</p>
+      <div class="tier-grid" id="tier-grid" aria-live="polite">
+        <p class="muted">Loading prices from the API.</p>
+      </div>
+
+      <h2>What happens to a question</h2>
+      <ol class="step-list">
+        <li><strong>Route.</strong> A small trained classifier labels the question simple, moderate or complex and picks a model size.</li>
+        <li><strong>Cache.</strong> If a very similar question was answered in the last hour, the saved answer is returned at no cost.</li>
+        <li><strong>Retrieve.</strong> The best few passages from the knowledge base are found. Weak matches are dropped to save tokens.</li>
+        <li><strong>Answer.</strong> The chosen model writes the reply. Without an API key the server quotes the documents instead.</li>
+        <li><strong>Plan.</strong> A planner suggests which cloud, region and machine type to run the work on.</li>
+      </ol>
+
+      <h2>What to keep in mind</h2>
+      <ul class="plain-list">
+        <li>The classifier learned from 120 hand-written questions. It is a good start, not a finished product.</li>
+        <li>Prices and machine costs are example numbers. Edit them in <code>backend/app/config.py</code> and <code>scheduler.py</code>.</li>
+        <li>The compute planner only recommends. It does not start machines.</li>
+        <li>Without a language model key the server answers from its own documents. Adding a key turns on live answers.</li>
+      </ul>
+    </section>
+
+    <!-- Try it -->
+    <section data-page="/try" aria-labelledby="try-title" hidden>
+      <h1 id="try-title">Try a question</h1>
+      <p class="lead">Type anything. The page shows each step SmartStack took and what it saved.</p>
+
+      <form id="query-form" class="card" novalidate>
+        <label for="query-input">Your question</label>
+        <textarea id="query-input" name="query" rows="3" maxlength="1000" placeholder="For example: How do spot instances lower my GPU bill?" required></textarea>
+        <div class="form-row">
+          <span class="muted small" id="char-count">0 / 1000</span>
+        </div>
+
+        <fieldset class="priority">
+          <legend>Priority</legend>
+          <label class="choice"><input type="radio" name="priority" value="interactive" checked> <span>Interactive <small>someone is waiting</small></span></label>
+          <label class="choice"><input type="radio" name="priority" value="batch"> <span>Batch <small>can wait, runs cheaper</small></span></label>
+        </fieldset>
+
+        <div class="button-row">
+          <button class="button primary" type="submit" id="run-button">Run question</button>
+          <span class="muted small" id="form-hint" role="status"></span>
+        </div>
+
+        <div class="examples">
+          <p class="small muted">Or start from an example:</p>
+          <div class="chips" id="example-chips"></div>
+        </div>
+      </form>
+
+      <div id="result" aria-live="polite">
+        <p class="empty-state">Run a question to see the route it took.</p>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section data-page="/how" aria-labelledby="how-title" hidden>
+      <h1 id="how-title">How it works</h1>
+      <p class="lead">Five small steps, each in its own file. Open the file next to its card to read the code.</p>
+
+      <ol class="flow" aria-label="Request flow">
+        <li><span class="flow-num">1</span><strong>Route</strong></li>
+        <li><span class="flow-num">2</span><strong>Cache</strong></li>
+        <li><span class="flow-num">3</span><strong>Retrieve</strong></li>
+        <li><span class="flow-num">4</span><strong>Answer</strong></li>
+        <li><span class="flow-num">5</span><strong>Plan</strong></li>
+      </ol>
+
+      <div class="card-grid">
+        <article class="card">
+          <h2>1. Route</h2>
+          <p class="file">backend/app/classifier.py</p>
+          <p>TF-IDF turns the words of a question into numbers. Four extra numbers describe its shape: length, how many things it asks for, commas and code. Logistic regression learns from 120 labelled examples which numbers mean simple, moderate or complex.</p>
+          <p class="muted" id="classifier-facts">Loading accuracy from the API.</p>
+          <p><strong>Why it saves money:</strong> the cheapest model that fits answers the question. If the classifier is unsure, the question moves up one tier.</p>
+        </article>
+        <article class="card">
+          <h2>2. Cache</h2>
+          <p class="file">backend/app/cache.py</p>
+          <p>Two checks must both pass before an answer is reused: the questions share most of their letter patterns, and most of their important words. The second check is why the capital of France and the capital of Spain do not share an answer.</p>
+          <p><strong>Why it saves money:</strong> a repeated question costs nothing and returns in milliseconds.</p>
+        </article>
+        <article class="card">
+          <h2>3. Retrieve</h2>
+          <p class="file">backend/app/retriever.py</p>
+          <p>Documents are cut into chunks. Each chunk is scored by exact word match and by fuzzy letter match, and the two scores are mixed 60 to 40. Only chunks above a minimum score are sent on.</p>
+          <p><strong>Why it saves money:</strong> fewer input tokens, and the model reads less noise.</p>
+        </article>
+        <article class="card">
+          <h2>4. Answer</h2>
+          <p class="file">backend/app/llm.py</p>
+          <p>With <code>ANTHROPIC_API_KEY</code> set, the model chosen in step 1 writes the reply and real token counts are used for the cost. Without a key, the server quotes the best matching sentences and estimates tokens.</p>
+          <p><strong>Why it saves money:</strong> the large model is the exception, not the default.</p>
+        </article>
+        <article class="card">
+          <h2>5. Plan</h2>
+          <p class="file">backend/app/scheduler.py</p>
+          <p>Picks the GPU class from the tier, then the cheapest region. Interactive work stays under an 80 ms latency budget on on-demand machines. Batch work uses cheaper spot machines in any region.</p>
+          <p><strong>Why it saves money:</strong> the right size of machine in the right place.</p>
+        </article>
+        <article class="card">
+          <h2>Run it yourself</h2>
+          <p class="file">README.md</p>
+          <pre><code>cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+
+# in another terminal
+cd frontend
+python -m http.server 8080</code></pre>
+          <p>Then open <code>http://localhost:8080</code>. Run <code>pytest</code> in <code>backend</code> to check everything.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- Dashboard -->
+    <section data-page="/dashboard" aria-labelledby="dash-title" hidden>
+      <h1 id="dash-title">Dashboard</h1>
+      <p class="lead">Totals for every question asked since the server last started. They reset on restart.</p>
+      <div id="dashboard" aria-live="polite">
+        <p class="muted">Loading totals from the API.</p>
+      </div>
+      <div class="button-row">
+        <button class="button" type="button" id="refresh-stats">Refresh now</button>
+        <span class="muted small">Updates every 10 seconds while this page is open.</span>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>SmartStack is a learning project.</p>
+    </div>
+  </footer>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
