@@ -30,7 +30,7 @@ function show() {
 
   current = route;
   document.title = `${titleFor(route)} | SmartStack`;
-  window.scrollTo(0, 0);
+  window.scrollTo({ top: 0, behavior: "instant" }); // jump, do not animate
   main.focus({ preventScroll: true }); // lets keyboard and screen reader users start at the new page
   hooks[route]?.enter?.();
 }
