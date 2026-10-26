@@ -1,0 +1,29 @@
+{
+  "note": "Questions the classifier never saw during training. The mix is roughly what a general assistant sees: mostly easy, some medium, a few hard.",
+  "queries": [
+    "What is the capital of Italy?",
+    "Define gravity.",
+    "How do you say good night in Italian?",
+    "What does RAM stand for?",
+    "What is the plural of mouse?",
+    "Who wrote Hamlet?",
+    "Convert 10 miles to kilometers.",
+    "What is 25 percent of 80?",
+    "Is 21 an odd number?",
+    "What is the opposite of generous?",
+    "Which planet is closest to the sun?",
+    "What does USB stand for?",
+    "Explain how a binary search works and why it needs sorted data.",
+    "Write a Python function that reverses a linked list.",
+    "Summarize the causes of the Great Depression in one paragraph.",
+    "What is the difference between a stack and a queue?",
+    "Draft a friendly email asking a colleague to review my report.",
+    "Explain how DNS turns a website name into an IP address.",
+    "Describe the difference between weather and climate with examples.",
+    "Design a notification system for a social app that handles ten million users, compare push and pull delivery, and explain how to avoid duplicate alerts.",
+    "Analyze the trade-offs between building a search engine in house versus using a hosted service, and recommend an approach for a ten person startup.",
+    "Create a step by step migration plan for moving a payment service from one cloud provider to another with no downtime, including risks and rollback.",
+    "Evaluate the security risks of storing user passwords with different hashing methods, compare them, and recommend a policy including migration of old accounts.",
+    "Develop a plan to reduce the cold start time of a serverless application, covering measurement, caching, and the trade-offs of each fix."
+  ]
+}
