@@ -1,0 +1,197 @@
+"""The heart of SmartStack: the steps every question goes through, in order.
+
+    question
+       |
+       v
+    1. ROUTE      classifier decides small, medium or large model
+    2. CACHE      a similar question answered recently? return it for free
+    3. RETRIEVE   find the few document passages that help
+    4. GENERATE   the chosen model writes the answer
+    5. PLAN       suggest where to run it
+    6. COST       compare with sending everything to the large model
+
+Each step lives in its own file. This file only connects them.
+"""
+
+import datetime
+import time
+
+from . import config
+from .cache import SemanticCache
+from .classifier import ComplexityClassifier
+from .llm import LLMClient
+from .retriever import Hit, Retriever
+from .scheduler import plan_compute
+from .schemas import (
+    CacheInfo, CostInfo, QueryResponse, RetrievalInfo, RoutingInfo, SourceInfo, Timings,
+)
+from .stats import Stats
+
+
+def elapsed_ms(since: float) -> float:
+    return round((time.perf_counter() - since) * 1000, 2)
+
+
+def cost_usd(tier_key: str, input_tokens: int, output_tokens: int) -> float:
+    tier = config.TIERS[tier_key]
+    return (
+        input_tokens * tier.input_per_million + output_tokens * tier.output_per_million
+    ) / 1_000_000
+
+
+class SmartStack:
+    def __init__(
+        self,
+        classifier: ComplexityClassifier,
+        cache: SemanticCache,
+        retriever: Retriever,
+        llm: LLMClient,
+        stats: Stats,
+    ):
+        self.classifier = classifier
+        self.cache = cache
+        self.retriever = retriever
+        self.llm = llm
+        self.stats = stats
+
+    async def handle(self, query: str, priority: str) -> QueryResponse:
+        started = time.perf_counter()
+
+        step = time.perf_counter()
+        routing = self.route(query)
+        route_ms = elapsed_ms(step)
+
+        step = time.perf_counter()
+        hit = self.cache.lookup(query)
+        cache_ms = elapsed_ms(step)
+
+        if hit:
+            response = self._answer_from_cache(query, routing, hit, route_ms, cache_ms, started)
+        else:
+            response = await self._answer_fresh(query, priority, routing, route_ms, cache_ms, started)
+
+        self.stats.record(response)
+        return response
+
+    # -- step 1 -------------------------------------------------------------
+
+    def route(self, query: str) -> RoutingInfo:
+        prediction = self.classifier.predict(query)
+        tier_key = config.LABEL_TO_TIER[prediction.label]
+        escalated = False
+        reason = f"The classifier is {prediction.confidence:.0%} sure this is {prediction.label}."
+
+        # When unsure, pay a little more instead of risking a weak answer.
+        last_index = len(config.TIER_ORDER) - 1
+        index = config.TIER_ORDER.index(tier_key)
+        if prediction.confidence < config.MIN_CONFIDENCE and index < last_index:
+            tier_key = config.TIER_ORDER[index + 1]
+            escalated = True
+            reason += (
+                f" That is below {config.MIN_CONFIDENCE:.0%}, so the question moves up one tier to be safe."
+            )
+
+        tier = config.TIERS[tier_key]
+        return RoutingInfo(
+            label=prediction.label,
+            confidence=round(prediction.confidence, 4),
+            probabilities={k: round(v, 4) for k, v in prediction.probabilities.items()},
+            tier=tier_key,
+            model_id=tier.model_id,
+            escalated=escalated,
+            reason=reason,
+        )
+
+    # -- steps 2 to 6 -------------------------------------------------------
+
+    def _answer_from_cache(self, query, routing, hit, route_ms, cache_ms, started) -> QueryResponse:
+        saved = hit.entry.payload
+        baseline = cost_usd(config.BASELINE_TIER, saved["input_tokens"], saved["output_tokens"])
+        return QueryResponse(
+            query=query,
+            answer=saved["answer"],
+            answer_mode="cache",
+            routing=routing,
+            cache=CacheInfo(hit=True, similarity=round(hit.similarity, 4), matched_query=hit.entry.query),
+            retrieval=RetrievalInfo(used=bool(saved["sources"]), sources=saved["sources"]),
+            compute=None,  # nothing had to run
+            cost=CostInfo(
+                input_tokens=saved["input_tokens"],
+                output_tokens=saved["output_tokens"],
+                actual_usd=0.0,
+                baseline_usd=round(baseline, 8),
+                saved_usd=round(baseline, 8),
+                saved_percent=100.0,
+                baseline_model=config.TIERS[config.BASELINE_TIER].model_id,
+            ),
+            timings=Timings(
+                route_ms=route_ms, cache_ms=cache_ms, retrieve_ms=0, generate_ms=0,
+                total_ms=elapsed_ms(started),
+            ),
+            timestamp=now_iso(),
+        )
+
+    async def _answer_fresh(self, query, priority, routing, route_ms, cache_ms, started) -> QueryResponse:
+        step = time.perf_counter()
+        passages = self.good_passages(self.retriever.search(query))
+        retrieve_ms = elapsed_ms(step)
+
+        step = time.perf_counter()
+        result = await self.llm.answer(query, routing.model_id, passages)
+        generate_ms = elapsed_ms(step)
+
+        sources = [
+            SourceInfo(title=p.title, snippet=shorten(p.text), score=round(p.score, 4)) for p in passages
+        ]
+
+        actual = cost_usd(routing.tier, result.input_tokens, result.output_tokens)
+        # The comparison assumes the large model would write an answer of the same length.
+        baseline = cost_usd(config.BASELINE_TIER, result.input_tokens, result.output_tokens)
+        saved = baseline - actual
+
+        # Only remember answers that came out cleanly.
+        if not result.warning:
+            self.cache.store(query, {
+                "answer": result.text,
+                "sources": sources,
+                "input_tokens": result.input_tokens,
+                "output_tokens": result.output_tokens,
+            })
+
+        return QueryResponse(
+            query=query,
+            answer=result.text,
+            answer_mode=result.mode,
+            warning=result.warning,
+            routing=routing,
+            cache=CacheInfo(hit=False),
+            retrieval=RetrievalInfo(used=bool(passages), sources=sources),
+            compute=plan_compute(routing.tier, priority),
+            cost=CostInfo(
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                actual_usd=round(actual, 8),
+                baseline_usd=round(baseline, 8),
+                saved_usd=round(saved, 8),
+                saved_percent=round(saved / baseline * 100, 1) if baseline else 0.0,
+                baseline_model=config.TIERS[config.BASELINE_TIER].model_id,
+            ),
+            timings=Timings(
+                route_ms=route_ms, cache_ms=cache_ms, retrieve_ms=retrieve_ms,
+                generate_ms=generate_ms, total_ms=elapsed_ms(started),
+            ),
+            timestamp=now_iso(),
+        )
+
+    @staticmethod
+    def good_passages(hits: list[Hit]) -> list[Hit]:
+        """Keep only passages that match well. Weak ones cost tokens and can mislead."""
+        return [hit for hit in hits if hit.score >= config.RETRIEVAL_MIN_SCORE]
+
+
+def shorten(text: str, limit: int = 180) -> str:
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "..."
+
+
+def now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
