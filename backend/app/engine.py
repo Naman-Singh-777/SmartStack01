@@ -26,6 +26,7 @@ from .schemas import (
     CacheInfo, CostInfo, QueryResponse, RetrievalInfo, RoutingInfo, SourceInfo, Timings,
 )
 from .stats import Stats
+from .wikipedia import WikipediaSearch
 
 
 def elapsed_ms(since: float) -> float:
@@ -47,14 +48,18 @@ class SmartStack:
         retriever: Retriever,
         llm: LLMClient,
         stats: Stats,
+        web: WikipediaSearch | None = None,
     ):
         self.classifier = classifier
         self.cache = cache
         self.retriever = retriever
         self.llm = llm
         self.stats = stats
+        self.web = web  # None switches the Wikipedia lookup off
 
-    async def handle(self, query: str, priority: str) -> QueryResponse:
+    async def handle(
+        self, query: str, priority: str, api_key: str | None = None
+    ) -> QueryResponse:
         started = time.perf_counter()
 
         step = time.perf_counter()
@@ -68,7 +73,9 @@ class SmartStack:
         if hit:
             response = self._answer_from_cache(query, routing, hit, route_ms, cache_ms, started)
         else:
-            response = await self._answer_fresh(query, priority, routing, route_ms, cache_ms, started)
+            response = await self._answer_fresh(
+                query, priority, routing, route_ms, cache_ms, started, api_key
+            )
 
         self.stats.record(response)
         return response
@@ -113,7 +120,9 @@ class SmartStack:
             answer_mode="cache",
             routing=routing,
             cache=CacheInfo(hit=True, similarity=round(hit.similarity, 4), matched_query=hit.entry.query),
-            retrieval=RetrievalInfo(used=bool(saved["sources"]), sources=saved["sources"]),
+            retrieval=RetrievalInfo(
+                used=bool(saved["sources"]), origin=saved["origin"], sources=saved["sources"]
+            ),
             compute=None,  # nothing had to run
             cost=CostInfo(
                 input_tokens=saved["input_tokens"],
@@ -131,17 +140,25 @@ class SmartStack:
             timestamp=now_iso(),
         )
 
-    async def _answer_fresh(self, query, priority, routing, route_ms, cache_ms, started) -> QueryResponse:
+    async def _answer_fresh(
+        self, query, priority, routing, route_ms, cache_ms, started, api_key=None
+    ) -> QueryResponse:
         step = time.perf_counter()
+        # Our own documents come first. If they have nothing useful, ask Wikipedia.
         passages = self.good_passages(self.retriever.search(query))
+        origin = "documents" if passages else "none"
+        if not passages and self.web is not None:
+            passages = await self.web.lookup(query)
+            origin = "wikipedia" if passages else "none"
         retrieve_ms = elapsed_ms(step)
 
         step = time.perf_counter()
-        result = await self.llm.answer(query, routing.model_id, passages)
+        result = await self.llm.answer(query, routing.model_id, passages, api_key)
         generate_ms = elapsed_ms(step)
 
         sources = [
-            SourceInfo(title=p.title, snippet=shorten(p.text), score=round(p.score, 4)) for p in passages
+            SourceInfo(title=p.title, snippet=shorten(p.text), score=round(p.score, 4), url=p.url)
+            for p in passages
         ]
 
         actual = cost_usd(routing.tier, result.input_tokens, result.output_tokens)
@@ -149,11 +166,13 @@ class SmartStack:
         baseline = cost_usd(config.BASELINE_TIER, result.input_tokens, result.output_tokens)
         saved = baseline - actual
 
-        # Only remember answers that came out cleanly.
-        if not result.warning:
+        # Only remember answers that came out cleanly and actually say something.
+        # An answer with no source and no model is just an apology, so skip it.
+        if not result.warning and (passages or result.mode == "live"):
             self.cache.store(query, {
                 "answer": result.text,
                 "sources": sources,
+                "origin": origin,
                 "input_tokens": result.input_tokens,
                 "output_tokens": result.output_tokens,
             })
@@ -165,7 +184,7 @@ class SmartStack:
             warning=result.warning,
             routing=routing,
             cache=CacheInfo(hit=False),
-            retrieval=RetrievalInfo(used=bool(passages), sources=sources),
+            retrieval=RetrievalInfo(used=bool(passages), origin=origin, sources=sources),
             compute=plan_compute(routing.tier, priority),
             cost=CostInfo(
                 input_tokens=result.input_tokens,

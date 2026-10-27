@@ -38,6 +38,7 @@ class Hit:
     score: float  # hybrid score, 0 to 1
     word_score: float
     char_score: float
+    url: str | None = None  # set for web sources such as Wikipedia
 
 
 def load_chunks(folder: Path) -> list[Chunk]:

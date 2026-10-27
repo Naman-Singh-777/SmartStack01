@@ -46,10 +46,12 @@ class SourceInfo(BaseModel):
     title: str
     snippet: str
     score: float
+    url: str | None = None  # link to the source when it is a web page
 
 
 class RetrievalInfo(BaseModel):
     used: bool  # True when at least one chunk was good enough to send to the model
+    origin: Literal["documents", "wikipedia", "none"] = "none"
     sources: list[SourceInfo]
 
 

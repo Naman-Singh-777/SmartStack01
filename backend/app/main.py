@@ -6,7 +6,7 @@ Interactive docs at:   http://localhost:8000/docs
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import config
@@ -18,6 +18,7 @@ from .ratelimit import RateLimiter
 from .retriever import Retriever
 from .schemas import QueryRequest, QueryResponse
 from .stats import Stats
+from .wikipedia import WikipediaSearch
 
 
 @asynccontextmanager
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
         retriever=Retriever(),
         llm=LLMClient(),
         stats=Stats(),
+        web=WikipediaSearch() if config.WEB_LOOKUP else None,
     )
     app.state.accuracy = classifier.cross_validated_accuracy()
     app.state.limiter = RateLimiter()
@@ -47,7 +49,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=config.ALLOWED_ORIGINS,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "X-LLM-Key"],
 )
 
 
@@ -72,7 +74,12 @@ def root():
 @app.get("/api/health")
 def health(request: Request):
     engine: SmartStack = request.app.state.engine
-    return {"status": "ok", "llm_mode": engine.llm.mode, "documents": len(engine.retriever.chunks)}
+    return {
+        "status": "ok",
+        "llm_mode": engine.llm.mode,
+        "documents": len(engine.retriever.chunks),
+        "wikipedia": engine.web is not None,
+    }
 
 
 @app.get("/api/models")
@@ -99,8 +106,14 @@ def models(request: Request):
 
 
 @app.post("/api/query", response_model=QueryResponse, dependencies=[Depends(check_rate_limit)])
-async def query(body: QueryRequest, request: Request):
-    return await request.app.state.engine.handle(body.query, body.priority)
+async def query(
+    body: QueryRequest,
+    request: Request,
+    x_llm_key: str | None = Header(default=None, max_length=300),
+):
+    """x_llm_key is the X-LLM-Key header: an optional key the visitor brings.
+    It is used for this request only. We never store it or write it to a log."""
+    return await request.app.state.engine.handle(body.query, body.priority, x_llm_key)
 
 
 @app.get("/api/stats")

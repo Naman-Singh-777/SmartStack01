@@ -1,7 +1,9 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app.llm import LLMClient, LLMResult
 from app.main import app
+from app.retriever import Hit
 from app.ratelimit import RateLimiter
 
 
@@ -9,7 +11,9 @@ from app.ratelimit import RateLimiter
 def client(monkeypatch):
     monkeypatch.setattr("app.llm.config.ANTHROPIC_API_KEY", "")
     with TestClient(app) as test_client:
-        test_client.app.state.engine.llm.api_key = ""  # force offline mode in tests
+        engine = test_client.app.state.engine
+        engine.llm.api_key = ""  # force offline mode in tests
+        engine.web = None  # never touch the network in tests
         yield test_client
 
 
@@ -80,3 +84,50 @@ def test_rate_limit_blocks_the_extra_request(client):
     assert ask(client, "first question about tokens").status_code == 200
     assert ask(client, "second question about caching").status_code == 200
     assert ask(client, "third question about routing").status_code == 429
+
+
+class FakeWeb:
+    """Stands in for Wikipedia so the test needs no internet."""
+
+    async def lookup(self, question):
+        return [Hit(
+            title="Wikipedia: Paris", text="Paris is the capital and largest city of France.",
+            score=0.9, word_score=1.0, char_score=1.0, url="https://en.wikipedia.org/wiki/Paris",
+        )]
+
+
+def test_wikipedia_is_used_when_our_documents_have_nothing(client):
+    client.app.state.engine.web = FakeWeb()
+    data = ask(client, "What is the capital of France?").json()
+    assert data["retrieval"]["origin"] == "wikipedia"
+    assert data["retrieval"]["sources"][0]["url"].startswith("https://en.wikipedia.org/")
+    assert "capital" in data["answer"]
+
+
+def test_our_own_documents_win_over_wikipedia(client):
+    client.app.state.engine.web = FakeWeb()
+    data = ask(client, "How do spot instances lower my GPU bill?").json()
+    assert data["retrieval"]["origin"] == "documents"
+
+
+def test_an_answer_with_no_source_is_not_cached(client):
+    first = ask(client, "Who painted the Mona Lisa?").json()
+    second = ask(client, "Who painted the Mona Lisa?").json()
+    assert first["retrieval"]["origin"] == "none"
+    assert second["answer_mode"] == "offline"  # not "cache"
+
+
+def test_visitor_key_switches_on_live_mode_for_that_request(client, monkeypatch):
+    async def fake_live(self, prompt, model_id, key):
+        assert key == "visitor-key"
+        return LLMResult(text="live text", input_tokens=10, output_tokens=5, mode="live")
+
+    monkeypatch.setattr(LLMClient, "_live_answer", fake_live)
+    response = client.post(
+        "/api/query", json={"query": "Who painted the Mona Lisa?"}, headers={"X-LLM-Key": "visitor-key"}
+    )
+    assert response.json()["answer_mode"] == "live"
+    # Another question without the header goes back to offline mode.
+    assert ask(client, "Who wrote Hamlet?").json()["answer_mode"] == "offline"
+    # The live answer was cached, so asking the same thing again is free for everyone.
+    assert ask(client, "Who painted the Mona Lisa?").json()["answer_mode"] == "cache"

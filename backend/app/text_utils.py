@@ -36,5 +36,13 @@ def split_sentences(text: str) -> list[str]:
 GENERIC_WORDS = frozenset(
     """good bad better best work works working use used using make makes made need needs
     example examples way many much one two three new like get gets time part often usually
-    different same simple common sometimes also even still really data percent""".split()
+    different same simple common sometimes also even still really data percent
+    stand mean means meaning define definition explain describe""".split()
 )
+
+
+def stem(word: str) -> str:
+    """Crude plural stripping so "vaccines" matches "vaccine". Not a real stemmer."""
+    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word

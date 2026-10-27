@@ -59,6 +59,9 @@ MAX_QUERY_CHARS = 1000
 RATE_LIMIT_REQUESTS = 30
 RATE_LIMIT_WINDOW_SECONDS = 60
 
+# Look things up on Wikipedia when our own documents have nothing useful.
+WEB_LOOKUP = os.getenv("WEB_LOOKUP", "on").lower() != "off"
+
 # Live mode turns on when this key exists. Without it the app answers from documents only.
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 MAX_OUTPUT_TOKENS = 500
