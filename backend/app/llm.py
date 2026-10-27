@@ -46,6 +46,20 @@ NO_ANSWER = (
 )
 
 
+NO_ANSWER_AFTER_FAILURE = (
+    "I could not find a source for that, and the language model could not answer right now. "
+    "Please try again in a moment."
+)
+# Failures worth one retry on a smaller, faster model: slow, busy or briefly broken.
+RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+
+def worth_retrying(error: Exception) -> bool:
+    if isinstance(error, httpx.HTTPStatusError):
+        return error.response.status_code in RETRYABLE_STATUS
+    return isinstance(error, httpx.TransportError)  # includes timeouts
+
+
 @dataclass
 class LLMResult:
     text: str
@@ -84,6 +98,8 @@ def explain_failure(error: Exception) -> str:
         return f"The model provider returned an error ({status}), so this is an offline answer."
     if isinstance(error, (KeyError, IndexError, ValueError)):
         return "The model provider sent a reply we could not read, so this is an offline answer."
+    if isinstance(error, httpx.TimeoutException):
+        return "The model provider took too long to answer, so this is an offline answer."
     return "The model provider could not be reached, so this is an offline answer."
 
 
@@ -134,17 +150,28 @@ class LLMClient:
     async def answer(
         self, query: str, model_id: str, passages: list[Hit],
         provider: str | None = None, key: str = "", problem: str | None = None,
+        fallback_model_id: str | None = None,
     ) -> LLMResult:
         prompt = build_prompt(query, passages)
         if provider is None:
             result = self._offline_answer(query, prompt, passages)
             result.warning = problem
             return result
+        note = None
         try:
-            return await self._live_answer(provider, prompt, model_id, key)
+            try:
+                return await self._live_answer(provider, prompt, model_id, key)
+            except (httpx.HTTPError, ValueError) as error:
+                # The big model can be slow or busy. Try the next smaller one once.
+                if fallback_model_id and worth_retrying(error):
+                    note = f"{model_id} did not answer in time, so {fallback_model_id} answered instead."
+                    result = await self._live_answer(provider, prompt, fallback_model_id, key)
+                    result.warning = note
+                    return result
+                raise
         except (httpx.HTTPError, KeyError, IndexError, ValueError) as error:
             # Never let a provider problem break the demo. Fall back and say why.
-            result = self._offline_answer(query, prompt, passages)
+            result = self._offline_answer(query, prompt, passages, live_failed=True)
             result.warning = explain_failure(error)
             return result
 
@@ -158,7 +185,7 @@ class LLMClient:
 
     @staticmethod
     async def _post(url: str, body: dict, headers: dict) -> dict:
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=config.LLM_TIMEOUT_SECONDS) as client:
             response = await client.post(url, json=body, headers=headers)
             response.raise_for_status()
         return response.json()
@@ -220,8 +247,12 @@ class LLMClient:
             mode="live",
         )
 
-    def _offline_answer(self, query: str, prompt: str, passages: list[Hit]) -> LLMResult:
-        text = extract_best_sentences(query, passages) or NO_ANSWER
+    def _offline_answer(
+        self, query: str, prompt: str, passages: list[Hit], live_failed: bool = False
+    ) -> LLMResult:
+        text = extract_best_sentences(query, passages) or (
+            NO_ANSWER_AFTER_FAILURE if live_failed else NO_ANSWER
+        )
         return LLMResult(
             text=text,
             input_tokens=estimate_tokens(SYSTEM_PROMPT + prompt),  # estimated, not measured

@@ -158,7 +158,13 @@ class SmartStack:
         retrieve_ms = elapsed_ms(step)
 
         step = time.perf_counter()
-        result = await self.llm.answer(query, routing.model_id, passages, provider, key, problem)
+        # If this model is slow or busy, the next smaller one can step in.
+        order = config.TIER_ORDER
+        lower = order[order.index(routing.tier) - 1] if routing.tier != order[0] else None
+        result = await self.llm.answer(
+            query, routing.model_id, passages, provider, key, problem,
+            fallback_model_id=ladder[lower].model_id if lower else None,
+        )
         generate_ms = elapsed_ms(step)
 
         sources = [

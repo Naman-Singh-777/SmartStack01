@@ -104,6 +104,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "").rstrip("/")  # for example http://localhost:11434
 MAX_OUTPUT_TOKENS = 500
+LLM_TIMEOUT_SECONDS = 25  # then try a smaller model, so a visitor is never left waiting a minute
 # Gemini 3 models can spend part of this budget on thinking, so give them more room.
 GEMINI_MAX_OUTPUT_TOKENS = 2000
 

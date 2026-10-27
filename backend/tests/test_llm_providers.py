@@ -73,3 +73,31 @@ def test_gemini_bad_key_error_is_explained_as_a_rejected_key():
     response = httpx.Response(400, request=request, text='{"error": {"message": "API key not valid"}}')
     error = httpx.HTTPStatusError("bad", request=request, response=response)
     assert "rejected the API key" in explain_failure(error)
+
+
+def test_a_slow_big_model_hands_over_to_the_next_smaller_one(monkeypatch):
+    calls = []
+
+    async def fake_live(self, provider, prompt, model_id, key):
+        calls.append(model_id)
+        if model_id == "big":
+            raise httpx.ReadTimeout("too slow")
+        from app.llm import LLMResult
+        return LLMResult(text="ok", input_tokens=1, output_tokens=1, mode="live")
+
+    monkeypatch.setattr(LLMClient, "_live_answer", fake_live)
+    client = LLMClient(server_keys={}, ollama_url="")
+    result = asyncio.run(client.answer("q", "big", [], "gemini", "AIza", fallback_model_id="small"))
+    assert calls == ["big", "small"]
+    assert result.mode == "live" and "small answered instead" in result.warning
+
+
+def test_failure_message_does_not_claim_the_key_is_missing(monkeypatch):
+    async def fake_live(self, provider, prompt, model_id, key):
+        raise httpx.ReadTimeout("too slow")
+
+    monkeypatch.setattr(LLMClient, "_live_answer", fake_live)
+    client = LLMClient(server_keys={}, ollama_url="")
+    result = asyncio.run(client.answer("q", "m", [], "gemini", "AIza"))
+    assert "No language model key" not in result.text
+    assert "took too long" in result.warning
