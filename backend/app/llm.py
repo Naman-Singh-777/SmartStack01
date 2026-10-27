@@ -33,9 +33,10 @@ ANTHROPIC_VERSION = "2023-06-01"
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 SYSTEM_PROMPT = (
     "You are a helpful assistant. Answer the question clearly and briefly. "
-    "Context passages may be provided. Use them when they help and mention the passage "
-    "number like [1]. If they do not help, answer from your own knowledge. "
-    "Do not invent facts, and say so when you are not sure."
+    "Context passages may be provided. They come from an automatic search, so they can be "
+    "about the wrong thing. Use them only when they match what the question most likely "
+    "means, and mention the passage number like [1]. Otherwise ignore them and answer from "
+    "your own knowledge. Do not invent facts, and say so when you are not sure."
 )
 NO_ANSWER = (
     "I could not find a reliable source for that. No language model key is set, so I can only "
