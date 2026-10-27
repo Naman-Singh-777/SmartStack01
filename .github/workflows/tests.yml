@@ -6,6 +6,7 @@ on:
       - "backend/**"
       - ".github/workflows/tests.yml"
   pull_request:
+  workflow_dispatch:
 
 jobs:
   pytest:

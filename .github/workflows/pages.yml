@@ -1,4 +1,5 @@
 # Publishes the frontend folder. Pages must use "GitHub Actions" as its source.
+# Also runs on demand from the Actions tab.
 name: Deploy site to GitHub Pages
 
 on:
