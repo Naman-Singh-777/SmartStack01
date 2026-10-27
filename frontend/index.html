@@ -58,8 +58,8 @@
       <ol class="step-list">
         <li><strong>Route.</strong> A small trained classifier labels the question simple, moderate or complex and picks a model size.</li>
         <li><strong>Cache.</strong> If a very similar question was answered in the last hour, the saved answer is returned at no cost.</li>
-        <li><strong>Retrieve.</strong> The best few passages from the knowledge base are found. Weak matches are dropped to save tokens.</li>
-        <li><strong>Answer.</strong> The chosen model writes the reply. Without an API key the server quotes the documents instead.</li>
+        <li><strong>Retrieve.</strong> The best few passages are found in the project documents. If they have nothing useful, Wikipedia is searched instead. Weak matches are dropped to save tokens, and every source is shown with a link.</li>
+        <li><strong>Answer.</strong> The chosen model writes the reply when a key is available. Without one, the server quotes the best matching sentences from the sources.</li>
         <li><strong>Plan.</strong> A planner suggests which cloud, region and machine type to run the work on.</li>
       </ol>
 
@@ -68,7 +68,7 @@
         <li>The classifier learned from 120 hand-written questions. It is a good start, not a finished product.</li>
         <li>Prices and machine costs are example numbers. Edit them in <code>backend/app/config.py</code> and <code>scheduler.py</code>.</li>
         <li>The compute planner only recommends. It does not start machines.</li>
-        <li>Without a language model key the server answers from its own documents. Adding a key turns on live answers.</li>
+        <li>Without a language model key, answers are sentences quoted from Wikipedia or the project documents. That works well for simple factual questions and poorly for anything that needs reasoning. A key fixes that.</li>
       </ul>
     </section>
 
@@ -89,6 +89,15 @@
           <label class="choice"><input type="radio" name="priority" value="interactive" checked> <span>Interactive <small>someone is waiting</small></span></label>
           <label class="choice"><input type="radio" name="priority" value="batch"> <span>Batch <small>can wait, runs cheaper</small></span></label>
         </fieldset>
+
+        <details class="key-box" id="key-box">
+          <summary>Use your own language model key (optional)</summary>
+          <p class="small muted">Without a key, answers are quoted from Wikipedia and the project documents. With a key, the model chosen for your question writes the answer. Your key travels over HTTPS with your question, is used for that request only, and is never stored or logged by the server. This browser tab remembers it until you close the tab.</p>
+          <div class="key-row">
+            <input id="llm-key" type="password" autocomplete="off" spellcheck="false" placeholder="Anthropic API key" aria-label="Anthropic API key">
+            <button class="button" type="button" id="clear-key">Clear</button>
+          </div>
+        </details>
 
         <div class="button-row">
           <button class="button primary" type="submit" id="run-button">Run question</button>
@@ -136,13 +145,13 @@
         <article class="card">
           <h2>3. Retrieve</h2>
           <p class="file">backend/app/retriever.py</p>
-          <p>Documents are cut into chunks. Each chunk is scored by exact word match and by fuzzy letter match, and the two scores are mixed 60 to 40. Only chunks above a minimum score are sent on.</p>
+          <p>Project documents are cut into chunks. Each chunk is scored by exact word match and by fuzzy letter match, and the two scores are mixed 60 to 40. Only chunks above a minimum score are sent on. If nothing matches, the Wikipedia API is searched and SmartStack re-ranks the candidate pages itself, because the search on Wikipedia handles questions poorly. No key is needed for Wikipedia.</p>
           <p><strong>Why it saves money:</strong> fewer input tokens, and the model reads less noise.</p>
         </article>
         <article class="card">
           <h2>4. Answer</h2>
           <p class="file">backend/app/llm.py</p>
-          <p>With <code>ANTHROPIC_API_KEY</code> set, the model chosen in step 1 writes the reply and real token counts are used for the cost. Without a key, the server quotes the best matching sentences and estimates tokens.</p>
+          <p>With a key, the model chosen in step 1 writes the reply and real token counts are used for the cost. The key can be set on the server as <code>ANTHROPIC_API_KEY</code> or pasted by a visitor on the Try it page. Without a key, the server quotes the best matching sentences from the sources and estimates tokens.</p>
           <p><strong>Why it saves money:</strong> the large model is the exception, not the default.</p>
         </article>
         <article class="card">

@@ -151,6 +151,13 @@ textarea:focus-visible { outline-offset: 0; }
 .chip:hover { border-color: var(--accent); }
 .chip .kind { color: var(--muted); margin-right: 6px; }
 
+/* Optional key box */
+.key-box { border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin: 16px 0 0; }
+.key-box summary { cursor: pointer; font-weight: 600; }
+.key-box p { margin: 10px 0; }
+.key-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.key-row input { flex: 1 1 220px; min-width: 0; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+
 /* Results -------------------------------------------------------------- */
 #result { margin-top: 24px; }
 .empty-state { text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: var(--radius); padding: 40px 20px; }

@@ -1,7 +1,7 @@
 // The "Try it" page: send a question to the API and draw every step of the answer.
 import { runQuery } from "./api.js";
 import { bar, clear, h, kv } from "./dom.js";
-import { isServerReady, llmMode } from "./status.js";
+import { isServerReady } from "./status.js";
 import { ms, number, percent, perThousand, usd } from "./format.js";
 
 const EXAMPLES = [
@@ -23,6 +23,20 @@ const counter = document.getElementById("char-count");
 const button = document.getElementById("run-button");
 const hint = document.getElementById("form-hint");
 const result = document.getElementById("result");
+const keyInput = document.getElementById("llm-key");
+const keyBox = document.getElementById("key-box");
+const KEY_STORE = "smartstack-llm-key";
+
+// sessionStorage lasts until the tab closes. It can be blocked, so every use is wrapped.
+function readSavedKey() {
+  try { return sessionStorage.getItem(KEY_STORE) ?? ""; } catch { return ""; }
+}
+function saveKey(value) {
+  try {
+    if (value) sessionStorage.setItem(KEY_STORE, value);
+    else sessionStorage.removeItem(KEY_STORE);
+  } catch { /* blocked storage: the key then only lives in the box */ }
+}
 
 // ---- the form ---------------------------------------------------------
 
@@ -64,7 +78,9 @@ async function submit(event) {
     : "The free server was asleep. The first question can take up to a minute.";
 
   try {
-    render(await runQuery(query, priority));
+    const key = keyInput.value.trim();
+    saveKey(key);
+    render(await runQuery(query, priority, key));
     hint.textContent = "";
   } catch (error) {
     clear(result).append(h("p", { class: "error-box", role: "alert" }, error.message));
@@ -99,7 +115,7 @@ function render(data) {
 function answerCard(data) {
   const badges = {
     live: `Live answer from ${data.routing.model_id}`,
-    offline: "Offline answer quoted from the documents",
+    offline: "Quoted from sources (no language model key)",
     cache: "Answer reused from the cache",
   };
   return h("section", { class: "card answer-card" },
@@ -107,8 +123,8 @@ function answerCard(data) {
     h("span", { class: `badge ${data.answer_mode === "cache" ? "" : `tier-${data.routing.tier}`}` }, badges[data.answer_mode]),
     h("p", { class: "answer-text" }, data.answer),
     data.warning && h("p", { class: "notice" }, data.warning),
-    data.answer_mode === "offline" && llmMode() === "offline" &&
-      h("p", { class: "muted small" }, "This server has no language model key. Set ANTHROPIC_API_KEY on the backend to switch on live answers."),
+    data.answer_mode === "offline" &&
+      h("p", { class: "muted small" }, "These sentences are quoted from the sources below, so they can miss the point on harder questions. Add a language model key above for full answers."),
   );
 }
 
@@ -177,7 +193,7 @@ function retrievalCard(retrieval) {
   if (!retrieval.used) {
     return card("Retrieve",
       h("p", {}, h("strong", {}, "Nothing sent.")),
-      h("p", { class: "muted small" }, "No passage matched well enough, so no documents were added to the prompt. That saves tokens."),
+      h("p", { class: "muted small" }, "No passage or Wikipedia page matched well enough, so nothing was added to the prompt. That saves tokens and avoids a misleading source."),
     );
   }
   const list = h("div");
@@ -185,14 +201,19 @@ function retrievalCard(retrieval) {
     list.append(
       h("div", { class: "source" },
         h("div", { class: "source-head" },
-          h("strong", {}, source.title),
+          source.url
+            ? h("a", { href: source.url, target: "_blank", rel: "noopener noreferrer" }, source.title)
+            : h("strong", {}, source.title),
           h("span", { class: "muted small" }, `score ${source.score.toFixed(2)}`),
         ),
         h("p", {}, source.snippet),
       ),
     );
   }
-  return card("Retrieve", list);
+  const origin = retrieval.origin === "wikipedia"
+    ? "From Wikipedia, because the project documents had nothing useful. Text is available under CC BY-SA."
+    : "From the project documents.";
+  return card("Retrieve", h("p", { class: "muted small" }, origin), list);
 }
 
 function computeCard(plan) {
@@ -226,6 +247,12 @@ function timingCard(timings) {
 }
 
 export function initTryPage() {
+  keyInput.value = readSavedKey();
+  keyBox.open = Boolean(keyInput.value);
+  document.getElementById("clear-key").addEventListener("click", () => {
+    keyInput.value = "";
+    saveKey("");
+  });
   buildExamples();
   updateCounter();
   input.addEventListener("input", updateCounter);

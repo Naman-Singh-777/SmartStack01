@@ -41,12 +41,13 @@ export function getModels() {
 }
 
 // A free server that has been idle can take up to a minute to wake, hence the long timeout.
-export const runQuery = (query, priority) =>
+// The key is optional. It goes in a header (never in the URL) and is used for this one request.
+export const runQuery = (query, priority, key = "") =>
   request(
     "/api/query",
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...(key ? { "X-LLM-Key": key } : {}) },
       body: JSON.stringify({ query, priority }),
     },
     75000,
