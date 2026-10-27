@@ -1,0 +1,18 @@
+# Starts the whole project with one command: docker compose up --build
+#   site: http://localhost:8080
+#   API:  http://localhost:8000/docs
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Optional. Leave empty to run in offline mode.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"

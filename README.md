@@ -36,6 +36,14 @@ python -m http.server 8080           # site on http://localhost:8080
 
 Run the tests with `pytest` inside `backend`.
 
+### Or with Docker
+
+```bash
+docker compose up --build
+```
+
+The site is then on http://localhost:8080 and the API on http://localhost:8000/docs.
+
 ## Turn on live model answers
 
 Without a key the server runs in offline mode: routing, caching, retrieval and cost estimates all work, but the answer text is quoted from the documents. To use real models, set an environment variable before starting the server:
