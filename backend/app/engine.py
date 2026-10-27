@@ -26,7 +26,7 @@ from .schemas import (
     CacheInfo, CostInfo, QueryResponse, RetrievalInfo, RoutingInfo, SourceInfo, Timings,
 )
 from .stats import Stats
-from .text_utils import stem, tokenize
+from .text_utils import content_words, stem, tokenize
 from .wikipedia import WikipediaSearch, important_stems
 
 
@@ -72,13 +72,19 @@ class SmartStack:
 
         step = time.perf_counter()
         hit = self.cache.lookup(query)
+        # A related (not identical) earlier question becomes background for the model.
+        related = hit
+        if related is None and provider is not None:
+            related = self.cache.lookup(query, config.CONTEXT_SIMILARITY, config.CONTEXT_WORD_OVERLAP)
         cache_ms = elapsed_ms(step)
 
-        if hit:
+        # Reuse an answer as it is only for the same question, or when no model is
+        # available to write a new one. Otherwise the model answers, with the cache as background.
+        if hit and (provider is None or is_same_question(query, hit)):
             response = self._answer_from_cache(query, routing, ladder, hit, route_ms, cache_ms, started)
         else:
             response = await self._answer_fresh(
-                query, priority, routing, ladder, route_ms, cache_ms, started, provider, key, problem
+                query, priority, routing, ladder, route_ms, cache_ms, started, provider, key, problem, related
             )
 
         self.stats.record(response)
@@ -146,7 +152,7 @@ class SmartStack:
 
     async def _answer_fresh(
         self, query, priority, routing, ladder, route_ms, cache_ms, started,
-        provider=None, key="", problem=None,
+        provider=None, key="", problem=None, related=None,
     ) -> QueryResponse:
         step = time.perf_counter()
         # Our own documents come first. If they have nothing useful, ask Wikipedia.
@@ -164,6 +170,7 @@ class SmartStack:
         result = await self.llm.answer(
             query, routing.model_id, passages, provider, key, problem,
             fallback_model_id=ladder[lower].model_id if lower else None,
+            earlier=(related.entry.query, related.entry.payload["answer"]) if related else None,
         )
         generate_ms = elapsed_ms(step)
 
@@ -194,7 +201,8 @@ class SmartStack:
             answer_mode=result.mode,
             warning=result.warning,
             routing=routing,
-            cache=CacheInfo(hit=False),
+            cache=CacheInfo(hit=False, similarity=round(related.similarity, 4) if related else None,
+                            context_from=related.entry.query if related else None),
             retrieval=RetrievalInfo(used=bool(passages), origin=origin, sources=sources),
             compute=plan_compute(routing.tier, priority),
             cost=CostInfo(
@@ -230,6 +238,11 @@ class SmartStack:
                 continue
             kept.append(hit)
         return kept
+
+
+def is_same_question(query: str, hit) -> bool:
+    """True when the cached question uses exactly the same important words."""
+    return content_words(query) == hit.entry.words
 
 
 def shorten(text: str, limit: int = 180) -> str:

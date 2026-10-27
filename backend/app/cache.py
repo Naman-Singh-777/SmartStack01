@@ -65,16 +65,25 @@ class SemanticCache:
     def __len__(self) -> int:
         return len(self._entries)
 
-    def lookup(self, query: str) -> CacheHit | None:
+    def lookup(
+        self, query: str, similarity: float | None = None, overlap: float | None = None
+    ) -> CacheHit | None:
+        """Best stored question that passes both checks.
+
+        The defaults are strict, for reusing an answer as it is. Pass lower numbers
+        to find merely related questions, which are only used as background.
+        """
+        similarity = self.similarity if similarity is None else similarity
+        overlap = self.word_overlap_needed if overlap is None else overlap
         self._drop_expired()
         vector = self._vectorizer.transform([query.lower()])
         words = content_words(query)
         best: CacheHit | None = None
         for entry in self._entries:
             letters = float(vector.multiply(entry.vector).sum())  # cosine, vectors are normalised
-            if letters < self.similarity:
+            if letters < similarity:
                 continue
-            if word_overlap(words, entry.words) < self.word_overlap_needed:
+            if word_overlap(words, entry.words) < overlap:
                 continue
             if best is None or letters > best.similarity:
                 best = CacheHit(entry, letters)

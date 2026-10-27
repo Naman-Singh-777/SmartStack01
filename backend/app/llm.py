@@ -78,11 +78,22 @@ def provider_for_key(key: str) -> str | None:
     return None
 
 
-def build_prompt(query: str, passages: list[Hit]) -> str:
-    if not passages:
+def build_prompt(query: str, passages: list[Hit], earlier: tuple[str, str] | None = None) -> str:
+    """The question, plus any context. `earlier` is a related (question, answer) from the cache."""
+    parts = []
+    if earlier:
+        parts.append(
+            "Earlier related question and answer. It may be about something different, "
+            "so use it only for background:\n"
+            f"Q: {earlier[0]}\nA: {earlier[1]}"
+        )
+    if passages:
+        parts.append(
+            "Context:\n" + "\n\n".join(f"[{i}] {p.title}: {p.text}" for i, p in enumerate(passages, start=1))
+        )
+    if not parts:
         return query
-    context = "\n\n".join(f"[{i}] {p.title}: {p.text}" for i, p in enumerate(passages, start=1))
-    return f"Context:\n{context}\n\nQuestion: {query}"
+    return "\n\n".join(parts) + f"\n\nQuestion: {query}"
 
 
 def explain_failure(error: Exception) -> str:
@@ -150,9 +161,9 @@ class LLMClient:
     async def answer(
         self, query: str, model_id: str, passages: list[Hit],
         provider: str | None = None, key: str = "", problem: str | None = None,
-        fallback_model_id: str | None = None,
+        fallback_model_id: str | None = None, earlier: tuple[str, str] | None = None,
     ) -> LLMResult:
-        prompt = build_prompt(query, passages)
+        prompt = build_prompt(query, passages, earlier)
         if provider is None:
             result = self._offline_answer(query, prompt, passages)
             result.warning = problem

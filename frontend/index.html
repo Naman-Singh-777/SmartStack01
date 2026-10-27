@@ -57,7 +57,7 @@
       <h2>What happens to a question</h2>
       <ol class="step-list">
         <li><strong>Route.</strong> A small trained classifier labels the question simple, moderate or complex and picks a model size.</li>
-        <li><strong>Cache.</strong> If a very similar question was answered in the last hour, the saved answer is returned at no cost.</li>
+        <li><strong>Cache.</strong> If the same question was answered in the last hour, the saved answer is returned at no cost. A similar but different question gets a fresh answer from the model, with the earlier one added as background.</li>
         <li><strong>Retrieve.</strong> The best few passages are found in the project documents. If they have nothing useful, Wikipedia is searched instead. Weak matches are dropped to save tokens, and every source is shown with a link.</li>
         <li><strong>Answer.</strong> The chosen model writes the reply when a key is available. Without one, the server quotes the best matching sentences from the sources.</li>
         <li><strong>Plan.</strong> A planner suggests which cloud, region and machine type to run the work on.</li>
@@ -139,8 +139,8 @@
         <article class="card">
           <h2>2. Cache</h2>
           <p class="file">backend/app/cache.py</p>
-          <p>Two checks must both pass before an answer is reused: the questions share most of their letter patterns, and most of their important words. The second check is why the capital of France and the capital of Spain do not share an answer.</p>
-          <p><strong>Why it saves money:</strong> a repeated question costs nothing and returns in milliseconds.</p>
+          <p>Two checks must both pass before an answer is reused as it is: the questions share most of their letter patterns, and most of their important words. The second check is why the capital of France and the capital of Spain do not share an answer. Only a question with the same important words gets the saved answer back. A related but longer or different question goes to the model, which receives the earlier question and answer as background.</p>
+          <p><strong>Why it saves money:</strong> a repeated question costs nothing and returns in milliseconds. Without a model key there is nothing to write a new answer, so similar questions still reuse the saved one.</p>
         </article>
         <article class="card">
           <h2>3. Retrieve</h2>

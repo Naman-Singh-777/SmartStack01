@@ -40,6 +40,9 @@ class CacheInfo(BaseModel):
     hit: bool
     similarity: float | None = None
     matched_query: str | None = None
+    # Set when a related earlier question was given to the model as background
+    # instead of being returned as the answer.
+    context_from: str | None = None
 
 
 class SourceInfo(BaseModel):

@@ -155,3 +155,26 @@ def test_an_unrecognised_key_is_ignored_with_a_clear_warning(client):
     ).json()
     assert data["answer_mode"] == "offline"
     assert "does not look like" in data["warning"]
+
+
+def test_a_related_question_gets_a_fresh_model_answer_with_the_cache_as_background(client, monkeypatch):
+    prompts = []
+
+    async def fake_live(self, provider, prompt, model_id, key):
+        prompts.append(prompt)
+        return LLMResult(text=f"answer {len(prompts)}", input_tokens=10, output_tokens=5, mode="live")
+
+    monkeypatch.setattr(LLMClient, "_live_answer", fake_live)
+    headers = {"X-LLM-Key": "AIzaFAKE"}
+    first = client.post("/api/query", json={"query": "indian names example"}, headers=headers).json()
+    second = client.post(
+        "/api/query", json={"query": "indian names example for kid naming"}, headers=headers
+    ).json()
+    assert first["answer"] == "answer 1"
+    assert second["answer_mode"] == "live" and second["answer"] == "answer 2"  # not the cached answer
+    assert second["cache"]["hit"] is False
+    assert second["cache"]["context_from"] == "indian names example"
+    assert "indian names example" in prompts[1] and "answer 1" in prompts[1]
+    # The very same question is still answered from the cache for free.
+    third = client.post("/api/query", json={"query": "Indian names example"}, headers=headers).json()
+    assert third["answer_mode"] == "cache"

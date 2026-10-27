@@ -176,6 +176,13 @@ function routeCard(routing) {
 }
 
 function cacheCard(cache) {
+  if (cache.context_from) {
+    return card("Cache",
+      h("p", {}, h("strong", {}, "Used as background.")),
+      kv([["Letter similarity", cache.similarity.toFixed(2)]]),
+      h("p", { class: "muted small" }, `A similar earlier question, "${cache.context_from}", was shown to the model as background. The answer above was still written fresh for your question.`),
+    );
+  }
   if (!cache.hit) {
     return card("Cache",
       h("p", {}, h("strong", {}, "Miss.")),

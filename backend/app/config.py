@@ -81,6 +81,9 @@ MIN_CONFIDENCE = 0.55
 # Semantic cache: how alike two questions must be to share an answer.
 CACHE_SIMILARITY = 0.80  # character n-gram cosine similarity, 0 to 1
 CACHE_WORD_OVERLAP = 0.60  # share of important words the two questions have in common
+# A related (not identical) earlier question can still be given to the model as background.
+CONTEXT_SIMILARITY = 0.45
+CONTEXT_WORD_OVERLAP = 0.4
 CACHE_MAX_ENTRIES = 500
 CACHE_TTL_SECONDS = 60 * 60
 
