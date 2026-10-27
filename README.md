@@ -12,7 +12,7 @@ SmartStack cuts the cost of answering questions with language models. Instead of
 | Route | Labels a question simple, moderate or complex and picks a small, medium or large model | TF-IDF, a few hand-made shape features and logistic regression, trained on 120 labelled questions | `backend/app/classifier.py` |
 | Cache | Reuses the answer to a question it has seen before | Character n-gram similarity plus a key-word check | `backend/app/cache.py` |
 | Retrieve | Finds the passages that help, first in the project documents, then on Wikipedia | Hybrid search: word TF-IDF mixed with character TF-IDF. Wikipedia candidates are re-ranked by SmartStack | `backend/app/retriever.py`, `backend/app/wikipedia.py` |
-| Answer | Writes the reply | Calls the Anthropic API when a key is available, otherwise quotes the best sentences from the sources | `backend/app/llm.py` |
+| Answer | Writes the reply | Calls Gemini, Anthropic or Ollama when a key is available, otherwise quotes the best sentences from the sources | `backend/app/llm.py` |
 | Plan | Suggests where to run the work | Rules over a price table (GPU class, region, spot or on-demand) | `backend/app/scheduler.py` |
 
 `backend/app/engine.py` connects the five steps and is the best file to read first.
@@ -48,15 +48,22 @@ The site is then on http://localhost:8080 and the API on http://localhost:8000/d
 
 Without a key the server runs in offline mode: routing, caching, retrieval and cost estimates all work, but the answer text is sentences quoted from Wikipedia or the project documents. That is fine for simple facts and weak for anything that needs reasoning.
 
-There are two ways to get real model answers:
+Real model answers work with three providers. Each has its own small, medium and large model, and the router picks among them:
 
-1. **Server key.** Set an environment variable before starting the server (on Render, add it under Environment):
+| Provider | Models (small / medium / large) | How to switch it on |
+| --- | --- | --- |
+| Gemini | `gemini-3.1-flash-lite`, `gemini-3.5-flash-lite`, `gemini-3.8-flash` | A free key from [Google AI Studio](https://aistudio.google.com/apikey) |
+| Anthropic | `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5` | An Anthropic API key |
+| Ollama | `llama3.2:3b`, `llama3.1:8b`, `qwen2.5:14b` | Run [Ollama](https://ollama.com) on your computer and set `OLLAMA_URL=http://localhost:11434` |
 
-   ```bash
-   export ANTHROPIC_API_KEY=your-key-here
-   ```
+Model ids can be changed with `GEMINI_MODEL_SMALL` / `_MEDIUM` / `_LARGE`, `MODEL_SMALL` / `_MEDIUM` / `_LARGE` (Anthropic) and `OLLAMA_MODEL_SMALL` / `_MEDIUM` / `_LARGE`. Model names change often, so check your provider's list if a call is rejected.
 
-2. **Visitor key.** On the Try it page, open "Use your own language model key" and paste a key. It is sent in a request header over HTTPS, used for that one request, and never stored or logged by the server. The browser tab remembers it until the tab closes.
+There are two ways to give the app a key:
+
+1. **Server key.** Set `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` before starting the server (on Render, add it under Environment). Ollama needs `OLLAMA_URL` instead, and only works when the backend runs on the same machine as Ollama, so it is not an option on Render's free tier.
+2. **Visitor key.** On the Try it page, open "Use your own language model key" and paste a key. The app tells Gemini keys (`AIza...`) from Anthropic keys (`sk-ant-...`) by their start. The key is sent in a request header over HTTPS, used for that one request, and never stored or logged by the server. The browser tab remembers it until the tab closes.
+
+Free Gemini keys may let Google use your prompts to improve its products, so do not send private information through one.
 
 Wikipedia lookups need no key. Questions your project documents cannot answer are sent to the public Wikipedia API as search words, so do not type secrets into the question box. Set `WEB_LOOKUP=off` to disable this.
 

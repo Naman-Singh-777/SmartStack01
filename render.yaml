@@ -11,6 +11,9 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.8
-      # Optional. Add it in the Render dashboard to switch on live model answers.
+      # Optional. Add one in the Render dashboard to switch on live model answers.
+      # A free Gemini key from https://aistudio.google.com/apikey is enough.
+      - key: GEMINI_API_KEY
+        sync: false
       - key: ANTHROPIC_API_KEY
         sync: false

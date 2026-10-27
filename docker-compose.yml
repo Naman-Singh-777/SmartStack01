@@ -8,7 +8,10 @@ services:
       - "8000:8000"
     environment:
       # Optional. Leave empty to run in offline mode.
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # To use Ollama on your own computer, uncomment this (Docker Desktop address):
+      # - OLLAMA_URL=http://host.docker.internal:11434
 
   frontend:
     build: ./frontend

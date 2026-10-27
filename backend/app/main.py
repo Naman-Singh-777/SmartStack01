@@ -77,6 +77,7 @@ def health(request: Request):
     return {
         "status": "ok",
         "llm_mode": engine.llm.mode,
+        "provider": engine.llm.server_provider,
         "documents": len(engine.retriever.chunks),
         "wikipedia": engine.web is not None,
     }
@@ -86,14 +87,15 @@ def health(request: Request):
 def models(request: Request):
     """The model ladder, example prices and how good the classifier is."""
     engine: SmartStack = request.app.state.engine
+    ladder = config.PROVIDERS[engine.llm.server_provider or config.DEFAULT_PROVIDER]
     return {
         "tiers": [
             {
                 "key": key,
-                "label": config.TIERS[key].label,
-                "model_id": config.TIERS[key].model_id,
-                "input_per_million": config.TIERS[key].input_per_million,
-                "output_per_million": config.TIERS[key].output_per_million,
+                "label": ladder[key].label,
+                "model_id": ladder[key].model_id,
+                "input_per_million": ladder[key].input_per_million,
+                "output_per_million": ladder[key].output_per_million,
             }
             for key in config.TIER_ORDER
         ],

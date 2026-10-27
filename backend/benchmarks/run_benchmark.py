@@ -26,7 +26,7 @@ async def main() -> None:
         classifier=ComplexityClassifier.from_file(config.TRAINING_FILE),
         cache=SemanticCache(),
         retriever=Retriever(),
-        llm=LLMClient(api_key=""),  # offline, so the benchmark needs no API key or money
+        llm=LLMClient(server_keys={}, ollama_url=""),  # offline, so the benchmark needs no API key or money
         stats=Stats(),
     )
     for query in queries:

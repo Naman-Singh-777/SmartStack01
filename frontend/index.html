@@ -92,9 +92,9 @@
 
         <details class="key-box" id="key-box">
           <summary>Use your own language model key (optional)</summary>
-          <p class="small muted">Without a key, answers are quoted from Wikipedia and the project documents. With a key, the model chosen for your question writes the answer. Your key travels over HTTPS with your question, is used for that request only, and is never stored or logged by the server. This browser tab remembers it until you close the tab.</p>
+          <p class="small muted">Without a key, answers are quoted from Wikipedia and the project documents. With a key, the model chosen for your question writes the answer. A free Gemini key works: get one at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>. Free Gemini keys may let Google use what you send to improve its products, so do not type private information. Your key travels over HTTPS with your question, is used for that request only, and is never stored or logged by the server. This browser tab remembers it until you close the tab.</p>
           <div class="key-row">
-            <input id="llm-key" type="password" autocomplete="off" spellcheck="false" placeholder="Anthropic API key" aria-label="Anthropic API key">
+            <input id="llm-key" type="password" autocomplete="off" spellcheck="false" placeholder="Gemini (AIza...) or Anthropic (sk-ant-...) key" aria-label="Language model API key">
             <button class="button" type="button" id="clear-key">Clear</button>
           </div>
         </details>
@@ -151,7 +151,7 @@
         <article class="card">
           <h2>4. Answer</h2>
           <p class="file">backend/app/llm.py</p>
-          <p>With a key, the model chosen in step 1 writes the reply and real token counts are used for the cost. The key can be set on the server as <code>ANTHROPIC_API_KEY</code> or pasted by a visitor on the Try it page. Without a key, the server quotes the best matching sentences from the sources and estimates tokens.</p>
+          <p>With a key, the model chosen in step 1 writes the reply and real token counts are used for the cost. Three providers are supported: Gemini (a free key works), Anthropic, and Ollama for models on your own computer. The key can be set on the server (<code>GEMINI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code>) or pasted by a visitor on the Try it page, and each provider has its own small, medium and large models. Without a key, the server quotes the best matching sentences from the sources and estimates tokens.</p>
           <p><strong>Why it saves money:</strong> the large model is the exception, not the default.</p>
         </article>
         <article class="card">

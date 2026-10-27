@@ -124,7 +124,7 @@ function answerCard(data) {
     h("p", { class: "answer-text" }, data.answer),
     data.warning && h("p", { class: "notice" }, data.warning),
     data.answer_mode === "offline" &&
-      h("p", { class: "muted small" }, "These sentences are quoted from the sources below, so they can miss the point on harder questions. Add a language model key above for full answers."),
+      h("p", { class: "muted small" }, "These sentences are quoted from the sources below, so they can miss the point on harder questions. Add a free Gemini key above for full answers."),
   );
 }
 

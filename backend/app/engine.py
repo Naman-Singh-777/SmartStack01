@@ -34,8 +34,8 @@ def elapsed_ms(since: float) -> float:
     return round((time.perf_counter() - since) * 1000, 2)
 
 
-def cost_usd(tier_key: str, input_tokens: int, output_tokens: int) -> float:
-    tier = config.TIERS[tier_key]
+def cost_usd(ladder: dict, tier_key: str, input_tokens: int, output_tokens: int) -> float:
+    tier = ladder[tier_key]
     return (
         input_tokens * tier.input_per_million + output_tokens * tier.output_per_million
     ) / 1_000_000
@@ -62,9 +62,12 @@ class SmartStack:
         self, query: str, priority: str, api_key: str | None = None
     ) -> QueryResponse:
         started = time.perf_counter()
+        # Which provider answers decides which three models (and prices) the router uses.
+        provider, key, problem = self.llm.choose(api_key)
+        ladder = config.PROVIDERS[provider or config.DEFAULT_PROVIDER]
 
         step = time.perf_counter()
-        routing = self.route(query)
+        routing = self.route(query, ladder)
         route_ms = elapsed_ms(step)
 
         step = time.perf_counter()
@@ -72,10 +75,10 @@ class SmartStack:
         cache_ms = elapsed_ms(step)
 
         if hit:
-            response = self._answer_from_cache(query, routing, hit, route_ms, cache_ms, started)
+            response = self._answer_from_cache(query, routing, ladder, hit, route_ms, cache_ms, started)
         else:
             response = await self._answer_fresh(
-                query, priority, routing, route_ms, cache_ms, started, api_key
+                query, priority, routing, ladder, route_ms, cache_ms, started, provider, key, problem
             )
 
         self.stats.record(response)
@@ -83,7 +86,7 @@ class SmartStack:
 
     # -- step 1 -------------------------------------------------------------
 
-    def route(self, query: str) -> RoutingInfo:
+    def route(self, query: str, ladder: dict) -> RoutingInfo:
         prediction = self.classifier.predict(query)
         tier_key = config.LABEL_TO_TIER[prediction.label]
         escalated = False
@@ -99,7 +102,7 @@ class SmartStack:
                 f" That is below {config.MIN_CONFIDENCE:.0%}, so the question moves up one tier to be safe."
             )
 
-        tier = config.TIERS[tier_key]
+        tier = ladder[tier_key]
         return RoutingInfo(
             label=prediction.label,
             confidence=round(prediction.confidence, 4),
@@ -112,9 +115,9 @@ class SmartStack:
 
     # -- steps 2 to 6 -------------------------------------------------------
 
-    def _answer_from_cache(self, query, routing, hit, route_ms, cache_ms, started) -> QueryResponse:
+    def _answer_from_cache(self, query, routing, ladder, hit, route_ms, cache_ms, started) -> QueryResponse:
         saved = hit.entry.payload
-        baseline = cost_usd(config.BASELINE_TIER, saved["input_tokens"], saved["output_tokens"])
+        baseline = cost_usd(ladder, config.BASELINE_TIER, saved["input_tokens"], saved["output_tokens"])
         return QueryResponse(
             query=query,
             answer=saved["answer"],
@@ -132,7 +135,7 @@ class SmartStack:
                 baseline_usd=round(baseline, 8),
                 saved_usd=round(baseline, 8),
                 saved_percent=100.0,
-                baseline_model=config.TIERS[config.BASELINE_TIER].model_id,
+                baseline_model=ladder[config.BASELINE_TIER].model_id,
             ),
             timings=Timings(
                 route_ms=route_ms, cache_ms=cache_ms, retrieve_ms=0, generate_ms=0,
@@ -142,7 +145,8 @@ class SmartStack:
         )
 
     async def _answer_fresh(
-        self, query, priority, routing, route_ms, cache_ms, started, api_key=None
+        self, query, priority, routing, ladder, route_ms, cache_ms, started,
+        provider=None, key="", problem=None,
     ) -> QueryResponse:
         step = time.perf_counter()
         # Our own documents come first. If they have nothing useful, ask Wikipedia.
@@ -154,7 +158,7 @@ class SmartStack:
         retrieve_ms = elapsed_ms(step)
 
         step = time.perf_counter()
-        result = await self.llm.answer(query, routing.model_id, passages, api_key)
+        result = await self.llm.answer(query, routing.model_id, passages, provider, key, problem)
         generate_ms = elapsed_ms(step)
 
         sources = [
@@ -162,9 +166,9 @@ class SmartStack:
             for p in passages
         ]
 
-        actual = cost_usd(routing.tier, result.input_tokens, result.output_tokens)
+        actual = cost_usd(ladder, routing.tier, result.input_tokens, result.output_tokens)
         # The comparison assumes the large model would write an answer of the same length.
-        baseline = cost_usd(config.BASELINE_TIER, result.input_tokens, result.output_tokens)
+        baseline = cost_usd(ladder, config.BASELINE_TIER, result.input_tokens, result.output_tokens)
         saved = baseline - actual
 
         # Only remember answers that came out cleanly and actually say something.
@@ -194,7 +198,7 @@ class SmartStack:
                 baseline_usd=round(baseline, 8),
                 saved_usd=round(saved, 8),
                 saved_percent=round(saved / baseline * 100, 1) if baseline else 0.0,
-                baseline_model=config.TIERS[config.BASELINE_TIER].model_id,
+                baseline_model=ladder[config.BASELINE_TIER].model_id,
             ),
             timings=Timings(
                 route_ms=route_ms, cache_ms=cache_ms, retrieve_ms=retrieve_ms,

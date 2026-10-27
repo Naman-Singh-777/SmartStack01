@@ -9,10 +9,10 @@ from app.ratelimit import RateLimiter
 
 @pytest.fixture()
 def client(monkeypatch):
-    monkeypatch.setattr("app.llm.config.ANTHROPIC_API_KEY", "")
     with TestClient(app) as test_client:
         engine = test_client.app.state.engine
-        engine.llm.api_key = ""  # force offline mode in tests
+        engine.llm.server_keys = {}  # force offline mode in tests
+        engine.llm.ollama_url = ""
         engine.web = None  # never touch the network in tests
         yield test_client
 
@@ -118,16 +118,40 @@ def test_an_answer_with_no_source_is_not_cached(client):
 
 
 def test_visitor_key_switches_on_live_mode_for_that_request(client, monkeypatch):
-    async def fake_live(self, prompt, model_id, key):
-        assert key == "visitor-key"
+    async def fake_live(self, provider, prompt, model_id, key):
+        assert (provider, key) == ("anthropic", "sk-ant-visitor")
         return LLMResult(text="live text", input_tokens=10, output_tokens=5, mode="live")
 
     monkeypatch.setattr(LLMClient, "_live_answer", fake_live)
     response = client.post(
-        "/api/query", json={"query": "Who painted the Mona Lisa?"}, headers={"X-LLM-Key": "visitor-key"}
+        "/api/query", json={"query": "Who painted the Mona Lisa?"}, headers={"X-LLM-Key": "sk-ant-visitor"}
     )
     assert response.json()["answer_mode"] == "live"
     # Another question without the header goes back to offline mode.
     assert ask(client, "Who wrote Hamlet?").json()["answer_mode"] == "offline"
     # The live answer was cached, so asking the same thing again is free for everyone.
     assert ask(client, "Who painted the Mona Lisa?").json()["answer_mode"] == "cache"
+
+
+def test_a_gemini_key_makes_the_router_use_gemini_models(client, monkeypatch):
+    seen = {}
+
+    async def fake_live(self, provider, prompt, model_id, key):
+        seen.update(provider=provider, model=model_id)
+        return LLMResult(text="live text", input_tokens=10, output_tokens=5, mode="live")
+
+    monkeypatch.setattr(LLMClient, "_live_answer", fake_live)
+    data = client.post(
+        "/api/query", json={"query": "Who wrote Hamlet?"}, headers={"X-LLM-Key": "AIzaFAKE"}
+    ).json()
+    assert seen["provider"] == "gemini"
+    assert seen["model"].startswith("gemini-")
+    assert data["routing"]["model_id"] == seen["model"]
+
+
+def test_an_unrecognised_key_is_ignored_with_a_clear_warning(client):
+    data = client.post(
+        "/api/query", json={"query": "Who wrote Hamlet?"}, headers={"X-LLM-Key": "not-a-real-key"}
+    ).json()
+    assert data["answer_mode"] == "offline"
+    assert "does not look like" in data["warning"]

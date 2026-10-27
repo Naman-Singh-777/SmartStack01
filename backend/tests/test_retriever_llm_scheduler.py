@@ -23,7 +23,7 @@ def test_offline_answer_quotes_the_documents():
 
 
 def test_offline_client_reports_offline_mode_and_token_counts():
-    client = LLMClient(api_key="")
+    client = LLMClient(server_keys={}, ollama_url="")
     passages = Retriever().search("What is a semantic cache?")
     result = asyncio.run(client.answer("What is a semantic cache?", "any-model", passages))
     assert result.mode == "offline"
@@ -31,7 +31,7 @@ def test_offline_client_reports_offline_mode_and_token_counts():
 
 
 def test_offline_client_admits_when_nothing_matches():
-    client = LLMClient(api_key="")
+    client = LLMClient(server_keys={}, ollama_url="")
     result = asyncio.run(client.answer("Who painted the Mona Lisa?", "any-model", []))
     assert "could not find" in result.text
 
