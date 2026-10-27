@@ -1,7 +1,7 @@
 import asyncio
 
 from app.llm import LLMClient, extract_best_sentences
-from app.retriever import Retriever
+from app.retriever import Hit, Retriever
 from app.scheduler import plan_compute
 
 
@@ -51,3 +51,11 @@ def test_small_tier_uses_cheaper_hardware_than_large():
     small = plan_compute("small", "interactive")
     large = plan_compute("large", "interactive")
     assert small.price_per_hour < large.price_per_hour
+
+
+def test_title_words_do_not_decide_which_sentence_is_quoted():
+    passage = Hit(
+        title="Wikipedia: France", score=0.9, word_score=1, char_score=1,
+        text="France is a country in Europe. It has many regions. Its capital is Paris.",
+    )
+    assert extract_best_sentences("What is the capital of France?", [passage], how_many=1) == "Its capital is Paris."

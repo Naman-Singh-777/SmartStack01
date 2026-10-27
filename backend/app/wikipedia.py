@@ -29,7 +29,11 @@ API_URL = "https://en.wikipedia.org/w/api.php"
 USER_AGENT = "SmartStackDemo/1.0 (https://github.com/Naman-Singh-777/SmartStack01)"
 TIMEOUT_SECONDS = 6
 MIN_COVERAGE = 0.5  # a page must mention at least half of the question's key words
-PASSAGE_CHARS = 900
+PASSAGE_CHARS = 1400
+KEEP_RATIO = 0.9  # drop a runner-up that scores far below the best page
+# Pages about a band, film or song share names with ordinary topics ("The Vaccines").
+MEDIA_WORDS = frozenset("band album song single film novel series musician rapper singer".split())
+MEDIA_PENALTY = 0.3
 
 
 def important_stems(question: str) -> set[str]:
@@ -99,6 +103,9 @@ def rank_pages(question: str, pages: list[dict], variant_count: int) -> list[Hit
         purity = len(title_words & wanted) / len(title_words) if title_words else 0.0
         popularity = page["votes"] / variant_count
         score = 0.5 * coverage + 0.35 * purity + 0.15 * popularity
+        opening = {w for w in tokenize(page["extract"][:200])}
+        if opening & MEDIA_WORDS and not (MEDIA_WORDS & {w for w in tokenize(question)}):
+            score -= MEDIA_PENALTY
         hits.append(Hit(
             title=f"Wikipedia: {page['title']}",
             text=shorten_passage(page["extract"]),
@@ -107,7 +114,8 @@ def rank_pages(question: str, pages: list[dict], variant_count: int) -> list[Hit
             char_score=round(purity, 4),
             url=page["url"],
         ))
-    return sorted(hits, key=lambda hit: -hit.score)
+    hits.sort(key=lambda hit: -hit.score)
+    return [hit for hit in hits if hit.score >= hits[0].score * KEEP_RATIO]
 
 
 class WikipediaSearch:

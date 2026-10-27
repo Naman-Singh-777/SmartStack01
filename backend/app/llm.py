@@ -20,7 +20,7 @@ import httpx
 
 from . import config
 from .retriever import Hit
-from .text_utils import content_words, estimate_tokens, split_sentences, stem
+from .text_utils import content_words, estimate_tokens, split_sentences, stem, tokenize
 
 API_URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"
@@ -126,20 +126,35 @@ def stems(text: str) -> set[str]:
     return {stem(word) for word in content_words(text)}
 
 
+MEASURE_WORDS = frozenset("tall high long big large old far deep heavy wide many much fast".split())
+
+
 def extract_best_sentences(query: str, passages: list[Hit], how_many: int = 2) -> str:
     """Pick the sentences that share the most important words with the question.
 
+    Only sources that score close to the best one are used. Words from the
+    source's own title are ignored, because they appear in nearly every
+    sentence ("France" tells us nothing about which sentence names the capital).
+    For "how tall..." questions, sentences that contain a number get a boost.
     If no sentence shares a word, fall back to the opening of the best source,
     which is usually its definition.
     """
     if not passages:
         return ""
-    wanted = stems(query)
+    best_score = passages[0].score
+    wanted_all = stems(query)
+    asks_for_number = bool(content_words(query) & MEASURE_WORDS) and "how" in tokenize(query)
     scored = []
     position = 0
     for passage in passages:
+        if passage.score < best_score * 0.9:
+            continue
+        title_stems = stems(passage.title.removeprefix("Wikipedia: "))
+        wanted = (wanted_all - title_stems) or wanted_all
         for sentence in split_sentences(passage.text):
             overlap = len(wanted & stems(sentence))
+            if asks_for_number and any(ch.isdigit() for ch in sentence):
+                overlap += 1
             if overlap > 0:
                 scored.append((overlap, position, sentence))
             position += 1

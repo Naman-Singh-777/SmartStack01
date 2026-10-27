@@ -48,3 +48,25 @@ def test_disambiguation_pages_are_skipped():
 def test_plural_question_matches_singular_page():
     pages = [page("Vaccine", "A vaccine is a biological preparation that provides immunity.")]
     assert rank_pages("How do vaccines work?", pages, variant_count=1)
+
+
+def candidate(title, extract, votes=2):
+    return {"title": title, "extract": extract, "url": "u", "position": 1, "votes": votes}
+
+
+def test_a_band_does_not_beat_the_real_topic():
+    pages = [
+        candidate("The Vaccines", "The Vaccines are an English indie rock band formed in London. Vaccine work shown."),
+        candidate("Vaccine", "A vaccine is a biological preparation that provides immunity. Vaccines work by training the body."),
+    ]
+    hits = rank_pages("How do vaccines work?", pages, 2)
+    assert hits[0].title == "Wikipedia: Vaccine"
+
+
+def test_a_weak_runner_up_is_dropped():
+    pages = [
+        candidate("France", "France is a country in Europe. Its capital is Paris."),
+        candidate("Capital punishment in France", "Capital punishment in France was abolished in 1981.", votes=1),
+    ]
+    hits = rank_pages("What is the capital of France?", pages, 2)
+    assert [h.title for h in hits] == ["Wikipedia: France"]

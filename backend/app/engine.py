@@ -26,7 +26,8 @@ from .schemas import (
     CacheInfo, CostInfo, QueryResponse, RetrievalInfo, RoutingInfo, SourceInfo, Timings,
 )
 from .stats import Stats
-from .wikipedia import WikipediaSearch
+from .text_utils import stem, tokenize
+from .wikipedia import WikipediaSearch, important_stems
 
 
 def elapsed_ms(since: float) -> float:
@@ -145,7 +146,7 @@ class SmartStack:
     ) -> QueryResponse:
         step = time.perf_counter()
         # Our own documents come first. If they have nothing useful, ask Wikipedia.
-        passages = self.good_passages(self.retriever.search(query))
+        passages = self.good_passages(query, self.retriever.search(query))
         origin = "documents" if passages else "none"
         if not passages and self.web is not None:
             passages = await self.web.lookup(query)
@@ -203,9 +204,22 @@ class SmartStack:
         )
 
     @staticmethod
-    def good_passages(hits: list[Hit]) -> list[Hit]:
-        """Keep only passages that match well. Weak ones cost tokens and can mislead."""
-        return [hit for hit in hits if hit.score >= config.RETRIEVAL_MIN_SCORE]
+    def good_passages(query: str, hits: list[Hit]) -> list[Hit]:
+        """Keep only passages that match well. Weak ones cost tokens and can mislead.
+
+        A passage must also mention most of the question's key words. Otherwise
+        "What does CPU stand for?" would match a document that never says "CPU".
+        """
+        wanted = important_stems(query)
+        kept = []
+        for hit in hits:
+            if hit.score < config.RETRIEVAL_MIN_SCORE:
+                continue
+            found = {stem(word) for word in tokenize(hit.text + " " + hit.title)}
+            if wanted and len(wanted & found) / len(wanted) <= 0.5:
+                continue
+            kept.append(hit)
+        return kept
 
 
 def shorten(text: str, limit: int = 180) -> str:
