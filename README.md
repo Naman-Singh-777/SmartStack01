@@ -10,7 +10,7 @@ SmartStack cuts the cost of answering questions with language models. Instead of
 | Step | What it does | Technique | File |
 | --- | --- | --- | --- |
 | Route | Labels a question simple, moderate or complex and picks a small, medium or large model | TF-IDF, a few hand-made shape features and logistic regression, trained on 120 labelled questions | `backend/app/classifier.py` |
-| Cache | Reuses the answer to a question it has seen before | Character n-gram similarity plus a key-word check | `backend/app/cache.py` |
+| Cache | Returns a saved answer for the same question, and passes a similar earlier answer to the model as background | Character n-gram similarity plus a key-word check | `backend/app/cache.py` |
 | Retrieve | Finds the passages that help, first in the project documents, then on Wikipedia | Hybrid search: word TF-IDF mixed with character TF-IDF. Wikipedia candidates are re-ranked by SmartStack | `backend/app/retriever.py`, `backend/app/wikipedia.py` |
 | Answer | Writes the reply | Calls Gemini, Anthropic or Ollama when a key is available, otherwise quotes the best sentences from the sources | `backend/app/llm.py` |
 | Plan | Suggests where to run the work | Rules over a price table (GPU class, region, spot or on-demand) | `backend/app/scheduler.py` |
