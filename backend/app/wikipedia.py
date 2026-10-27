@@ -101,7 +101,9 @@ def rank_pages(question: str, pages: list[dict], variant_count: int) -> list[Hit
         # A title made only of question words ("France") beats one with extras
         # ("Capital punishment in France").
         purity = len(title_words & wanted) / len(title_words) if title_words else 0.0
-        popularity = page["votes"] / variant_count
+        if page.get("exact"):
+            purity = 1.0  # Wikipedia itself says this page is what the term means
+        popularity = min(1.0, page["votes"] / variant_count)
         score = 0.5 * coverage + 0.35 * purity + 0.15 * popularity
         opening = {w for w in tokenize(page["extract"][:200])}
         if opening & MEDIA_WORDS and not (MEDIA_WORDS & {w for w in tokenize(question)}):
@@ -128,7 +130,12 @@ class WikipediaSearch:
             async with httpx.AsyncClient(
                 timeout=TIMEOUT_SECONDS, headers={"User-Agent": USER_AGENT}
             ) as client:
-                results = await asyncio.gather(*(self._search(client, v) for v in variants))
+                searches = [self._search(client, v) for v in variants]
+                # A single key word such as "CPU" is often a redirect to the real page
+                # ("Central processing unit"), which plain search ranks too low.
+                if " " not in variants[0]:
+                    searches.append(self._by_title(client, variants[0]))
+                results = await asyncio.gather(*searches)
         except httpx.HTTPError:
             return []  # Wikipedia being unreachable must never break an answer
 
@@ -137,7 +144,21 @@ class WikipediaSearch:
             for page in pages:
                 known = merged.setdefault(page["title"], {**page, "votes": 0})
                 known["votes"] += 1
+                known["exact"] = known.get("exact") or page.get("exact", False)
         return rank_pages(question, list(merged.values()), len(variants))[:how_many]
+
+    @staticmethod
+    async def _by_title(client: httpx.AsyncClient, term: str) -> list[dict]:
+        response = await client.get(API_URL, params={
+            "action": "query", "format": "json", "titles": term, "redirects": 1,
+            "prop": "extracts|info", "exintro": 1, "explaintext": 1, "exsentences": 10,
+            "inprop": "url",
+        })
+        response.raise_for_status()
+        pages = parse_pages(response.json())
+        for page in pages:
+            page["exact"] = True
+        return pages
 
     @staticmethod
     async def _search(client: httpx.AsyncClient, query: str) -> list[dict]:

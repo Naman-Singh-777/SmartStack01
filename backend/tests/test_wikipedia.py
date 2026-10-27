@@ -70,3 +70,12 @@ def test_a_weak_runner_up_is_dropped():
     ]
     hits = rank_pages("What is the capital of France?", pages, 2)
     assert [h.title for h in hits] == ["Wikipedia: France"]
+
+
+def test_a_page_found_by_exact_title_beats_a_look_alike():
+    pages = [
+        candidate("CPU cache", "A CPU cache is a hardware cache used by the CPU of a computer."),
+        {**candidate("Central processing unit", "A central processing unit (CPU) is the main processor of a computer.", votes=1), "exact": True},
+    ]
+    hits = rank_pages("What does CPU stand for?", pages, 2)
+    assert hits[0].title == "Wikipedia: Central processing unit"
